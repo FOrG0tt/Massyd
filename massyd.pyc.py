@@ -16,7 +16,7 @@ import pyzbar.pyzbar as pyzbar
 import ctypes
 import inspect
 import select
-import YB_Pcb_Car
+import bobot_megs_car
 import HSV_Config
 import PID
 import tensorflow as tf
@@ -33,9 +33,9 @@ global g_presentation_mode, g_mode, g_detect_control_mode, g_detdect_mode, g_aut
 global LED1_state, meanshift_high, g_tag_identify_switch, color_lower
 
 # Constants
-APP_ID_Body = 'FUCK YOU'
-API_KEY_Body = 'FUCK YOU'
-SECRET_KEY_Body = 'FUCK YOU'
+APP_ID_Body = 'no'
+API_KEY_Body = 'no'
+SECRET_KEY_Body = 'no'
 client_body = AipBodyAnalysis(APP_ID_Body, API_KEY_Body, SECRET_KEY_Body)
 LED1 = 40
 LED2 = 38
@@ -45,10 +45,6 @@ TrigPin = 16
 AvoidSensorLeft = 21
 AvoidSensorRight = 19
 Avoid_ON = 22
-Tracking_Right1 = 11
-Tracking_Right2 = 7
-Tracking_Left1 = 13
-Tracking_Left2 = 15
 SSID = ''
 PASSWD = ''
 meanshift_X = 140
@@ -88,7 +84,7 @@ g_auto_drive_switch = 'close'
 g_connect_wifi_switch = 'close'
 HANDSHAKE_STRING = 'HTTP/1.1 101 Switching Protocols\r\nUpgrade:websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {1}\r\nWebSocket-Location: ws://{2}/chat\r\nWebSocket-Protocol:chat\r\n\r\n'
 app = Flask(__name__)
-car = YB_Pcb_Car.YB_Pcb_Car()
+car = bobot_megs_car.bobot_megs_car()
 
 @app.route('/')
 def index():
@@ -268,7 +264,7 @@ def send_msg(conn, msg_bytes):
 def mode_handle():
     """Handle different modes of operation."""
     global g_camera, prev_right, prev_left, qrcode_data, meanshift_update_flag, LED1_state, gesture_date
-    if False: yield
+
     g_camera = cv2.VideoCapture(0)
     g_camera.set(3, 320)
     g_camera.set(4, 240)
@@ -277,6 +273,7 @@ def mode_handle():
     g_camera.set(cv2.CAP_PROP_BRIGHTNESS, 62)
     g_camera.set(cv2.CAP_PROP_CONTRAST, 63)
     g_camera.set(cv2.CAP_PROP_EXPOSURE, 4800)
+
     update_hsv = HSV_Config.update_hsv()
     xservo_pid = PID.PositionalPID(1.1, 0.2, 0.8)
     yservo_pid = PID.PositionalPID(0.8, 0.2, 0.8)
@@ -285,30 +282,23 @@ def mode_handle():
     speed_pid = PID.PositionalPID(2.1, 0, 0.8)
     face_haar = cv2.CascadeClassifier('123.xml')
     sess = tf.compat.v1.Session(graph=detection_graph)
+
     fps = 0
     t_start = time.time()
+
     while g_mode == 'auto_drive':
         if g_camera.get(cv2.CAP_PROP_FRAME_WIDTH) != 640:
-            pass
-        if True:
-            print('################# 0 640*480')
             g_camera.release()
-            print('################# 1 640*480')
             g_camera = cv2.VideoCapture(0)
-            print('################# 2 640*480')
             g_camera.set(3, 640)
             g_camera.set(4, 480)
             g_camera.set(5, 30)
             g_camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M', 'J', 'P', 'G'))
             g_camera.set(cv2.CAP_PROP_BRIGHTNESS, 60)
-            print('################# 3 640*480')
         else:
             if g_camera.get(cv2.CAP_PROP_FRAME_WIDTH) != 320:
-                print('################# 0 320*240')
                 g_camera.release()
-                print('################# 1 320*240')
                 g_camera = cv2.VideoCapture(0)
-                print('################# 2 320*240')
                 g_camera.set(3, 320)
                 g_camera.set(4, 240)
                 g_camera.set(5, 30)
@@ -316,92 +306,76 @@ def mode_handle():
                 g_camera.set(cv2.CAP_PROP_BRIGHTNESS, 62)
                 g_camera.set(cv2.CAP_PROP_CONTRAST, 63)
                 g_camera.set(cv2.CAP_PROP_EXPOSURE, 4800)
-                print('################# 3 320*240')
+
         retval, frame = g_camera.read()
         if not retval:
-            LED1_state = bool(1 - LED1_state)
+            LED1_state = not LED1_state
             GPIO.output(LED1, LED1_state)
             time.sleep(0.05)
             print('read camera err!')
         else:
             fps += 1
             mfps = fps / (time.time() - t_start)
-            if not g_mode == 'target_track' or g_target_mode == 'face_track':
+            if g_mode != 'target_track' or g_target_mode == 'face_track':
                 gray_img = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 faces = face_haar.detectMultiScale(gray_img)
                 if len(faces) > 0:
+                    face_x, face_y, face_w, face_h = faces[0]
+                    cv2.rectangle(frame, (face_x, face_y), (face_x + face_w, face_y + face_h), (0, 255, 0), 2)
+            elif g_target_mode == 'color_track':
+                pass
+            elif g_mode == 'target_detdect':
+                if g_detdect_mode == 'face_detect':
+                    gray_img = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    faces = face_haar.detectMultiScale(gray_img)
+                    if len(faces) > 0:
+                        face_x, face_y, face_w, face_h = faces[0]
+                        cv2.rectangle(frame, (face_x, face_y), (face_x + face_w, face_y + face_h), (0, 255, 0), 2)
+                elif g_detdect_mode == 'color_detect':
                     pass
-            else:
-                if g_target_mode == 'color_track':
-                    pass
-                else:
-                    pass
-                if g_mode == 'target_detdect':
-                    if g_detdect_mode == 'face_detect':
-                        gray_img = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                        faces = face_haar.detectMultiScale(gray_img)
-                        if len(faces) > 0:
-                            face_x, face_y, face_w, face_h = faces[0]
-                            cv2.rectangle(frame, (face_x, face_y), (face_x + face_w, face_y + face_h), (0, 255, 0), 2)
-                    else:
-                        if g_detdect_mode == 'color_detect':
-                            pass
-                        else:
-                            pass
-                else:
-                    if g_mode == 'tag_identification' or g_mode == 'tag_identification_control':
-                        if g_tag_select == 'qrcode' or g_detect_control_mode == 'qrcode_control':
-                            gray_img = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                            barcodes = pyzbar.decode(gray_img)
-                            if g_mode == 'tag_identification_control' and len(barcodes) == 0:
-                                qrcode_data = 'stop'
-                            for barcode in barcodes:
-                                x, y, w, h = barcode.rect
-                                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 225, 0), 2)
-                                barcodeData = barcode.data.decode('utf-8')
-                                barcodeType = barcode.type
-                                text = '{} ({})'.format(barcodeData, barcodeType)
-                                cv2.putText(frame, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (225, 225, 0), 2)
-                                if g_mode == 'tag_identification_control':
-                                    pass
-                            pass
-                        else:
-                            if g_tag_select == 'object':
-                                image_np_expanded = np.expand_dims(frame, axis=0)
-                                image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
-                                detection_boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
-                                detection_scores = detection_graph.get_tensor_by_name('detection_scores:0')
-                                detection_classes = detection_graph.get_tensor_by_name('detection_classes:0')
-                                num_detections = detection_graph.get_tensor_by_name('num_detections:0')
-                                boxes, scores, classes, num = sess.run(
-                                    [detection_boxes, detection_scores, detection_classes, num_detections],
-                                    feed_dict={image_tensor: image_np_expanded}
-                                )
-                                vis_utils.visualize_boxes_and_labels_on_image_array(
-                                    frame, np.squeeze(boxes), np.squeeze(classes).astype(np.int32),
-                                    np.squeeze(scores), category_index, use_normalized_coordinates=True,
-                                    line_thickness=8
-                                )
-                            else:
-                                if g_tag_select == 'gesture' or g_detect_control_mode == 'gesture_control':
-                                    raw = str(client_body.gesture(bgr8_to_jpeg(frame)))
-                                    text = demjson.decode(raw)
-                                    try:
-                                        res = text['result'][0]['classname']
-                                    except:
-                                        frame = cv2ImgAddText(frame, 'Frame', 10, 30, (0, 0, 255), 30)
-                                        if g_mode == 'tag_identification_control':
-                                            pass
-                                        info = hand[res]
-                                        frame = cv2ImgAddText(frame, hand[res], 10, 30, (0, 255, 0), 30)
-                                        if g_mode == 'tag_identification_control':
-                                            pass
+            elif g_mode in ['tag_identification', 'tag_identification_control']:
+                if g_tag_select == 'qrcode' or g_detect_control_mode == 'qrcode_control':
+                    gray_img = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    barcodes = pyzbar.decode(gray_img)
+                    if g_mode == 'tag_identification_control' and len(barcodes) == 0:
+                        qrcode_data = 'stop'
+                    for barcode in barcodes:
+                        x, y, w, h = barcode.rect
+                        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 225, 0), 2)
+                        barcodeData = barcode.data.decode('utf-8')
+                        barcodeType = barcode.type
+                        text = '{} ({})'.format(barcodeData, barcodeType)
+                        cv2.putText(frame, text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (225, 225, 0), 2)
+                elif g_tag_select == 'object':
+                    image_np_expanded = np.expand_dims(frame, axis=0)
+                    image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
+                    detection_boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
+                    detection_scores = detection_graph.get_tensor_by_name('detection_scores:0')
+                    detection_classes = detection_graph.get_tensor_by_name('detection_classes:0')
+                    num_detections = detection_graph.get_tensor_by_name('num_detections:0')
+                    boxes, scores, classes, num = sess.run(
+                        [detection_boxes, detection_scores, detection_classes, num_detections],
+                        feed_dict={image_tensor: image_np_expanded}
+                    )
+                    vis_utils.visualize_boxes_and_labels_on_image_array(
+                        frame, np.squeeze(boxes), np.squeeze(classes).astype(np.int32),
+                        np.squeeze(scores), category_index, use_normalized_coordinates=True,
+                        line_thickness=8
+                    )
+                elif g_tag_select == 'gesture' or g_detect_control_mode == 'gesture_control':
+                    raw = str(client_body.gesture(bgr8_to_jpeg(frame)))
+                    text = demjson.decode(raw)
+                    try:
+                        res = text['result'][0]['classname']
+                        frame = cv2ImgAddText(frame, hand[res], 10, 30, (0, 255, 0), 30)
+                    except:
+                        frame = cv2ImgAddText(frame, 'Frame', 10, 30, (0, 0, 255), 30)
+
             if g_mode != 'auto_drive':
                 cv2.putText(frame, 'FPS:  ' + str(int(mfps)), (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-            stringData = (imgencode.tostring() + b'--frame\r\nContent-Type: text/plain\r\n\r\n' + stringData + b'\r\n')
-    return None
-
-"""kill me please i dont fucking know how this is working but thank you chatgpttttttttttttttttttttttttt"""
+            stringData = (cv2.imencode('.jpg', frame)[1].tobytes() + b'--frame\r\nContent-Type: text/plain\r\n\r\n' + stringData + b'\r\n')
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + stringData + b'\r\n')
 
 def getip():
     """Get the IP address of the device."""
@@ -662,20 +636,7 @@ def handle_cmd_13(cmd):
         print('cmd-13 expression parse failure!')
 
 def handle_cmd_14(cmd):
-    reg = re.compile(r'^\$14,(?P<Detect_Control>[^ ]*)#')
-    regMatch = reg.match(cmd)
-    if regMatch:
-        Detect_Control = regMatch.group('Detect_Control')
-        g_detect_control_mode = {
-            '0': '0',
-            '1': 'qrcode_control',
-            '2': 'gesture_control'
-        }.get(Detect_Control, 'Unknown')
-    else:
-        print('cmd-14 expression parse failure!')
-
-def handle_cmd_15(cmd):
-    reg = re.compile(r'^\$15,(?P<wifi_switch>[^ ]*)#')
+    reg = re.compile(r'^\$14,(?P<wifi_switch>[^ ]*)#')
     regMatch = reg.match(cmd)
     if regMatch:
         wifi_switch = regMatch.group('wifi_switch')
@@ -683,8 +644,8 @@ def handle_cmd_15(cmd):
     else:
         print('cmd-15 expression parse failure!')
 
-def handle_cmd_16(cmd):
-    reg = re.compile(r'^\$16,(?P<Auto_drive_state>[^ ]*)#')
+def handle_cmd_15(cmd):
+    reg = re.compile(r'^\$15,(?P<Auto_drive_state>[^ ]*)#')
     regMatch = reg.match(cmd)
     if regMatch:
         Auto_drive_state = regMatch.group('Auto_drive_state')
@@ -697,41 +658,7 @@ def handle_cmd_16(cmd):
         print('cmd-16 expression parse failure!')
 
 def handle_cmd_17(cmd):
-    reg = re.compile(r'^\$17,(?P<mode_select>[^ ]*)#')
-    regMatch = reg.match(cmd)
-    if regMatch:
-        mode_select = regMatch.group('mode_select')
-        mode_actions = {
-            '0': reset_all_modes,
-            '1': set_remote_control_mode,
-            '2': lambda: set_mode('presentation', GPIO.HIGH),
-            '3': lambda: set_mode('track_mode'),
-            '4': lambda: set_mode('target_detdect'),
-            '5': set_target_track_mode,
-            '6': lambda: set_mode('tag_identification'),
-            '7': lambda: set_mode('tag_identification_control'),
-            '8': set_auto_drive_mode
-        }
-        action = mode_actions.get(mode_select)
-        if action:
-            action()
-        else:
-            print('cmd-17 expression parse failure!')
-    else:
-        print('cmd-17 expression parse failure!')
-
-def handle_cmd_18(cmd):
-    reg = re.compile(r'^\$18,(?P<view_switch>[^ ]*)#')
-    regMatch = reg.match(cmd)
-    if regMatch:
-        view_switch = regMatch.group('view_switch')
-        if view_switch == '1':
-            g_drive_view_switch = 0 if g_drive_view_switch + 1 > 2 else g_drive_view_switch + 1
-    else:
-        print('cmd-18 expression parse failure!')
-
-def handle_cmd_19(cmd):
-    reg = re.compile(r'^\$19,(?P<color_select>[^ ]*)#')
+    reg = re.compile(r'^\$17,(?P<color_select>[^ ]*)#')
     regMatch = reg.match(cmd)
     if regMatch:
         color_select = regMatch.group('color_select')
